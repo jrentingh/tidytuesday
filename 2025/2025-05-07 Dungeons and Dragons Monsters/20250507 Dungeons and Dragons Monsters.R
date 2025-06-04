@@ -10,6 +10,7 @@ setwd("~/Jason/R Sandbox/TidyTuesdays/2025-05-07")
 
 # load libraries
 library(tidyverse)
+library(shiny)
 
 
 # load dataset
@@ -110,3 +111,96 @@ plot_speed_type <- avg_speed |>
        subtitle="Data from 2024 Dungeons and Dragons Monsters List")
 plot_speed_type
 ggsave("col_speed_type.png", path = "Viz")
+
+
+# explore relation between skill proficiencies and type
+
+monsters_skills <- monsters |>
+  separate_rows(skills, sep = ",\\s+") |>
+  mutate(
+    skill_name = str_extract(skills, "^[A-Za-z]+"),
+    skill_modifier = as.numeric(str_extract(skills, "[+-]\\d+"))) |>
+  mutate(
+    skill_abbr = tolower(str_replace_all(skill_name, " ", "_")),
+    skill_dummy = 1) |>
+  pivot_wider(
+    id_cols = c(name, type),
+    names_from = skill_abbr,
+    values_from = c(skill_dummy, skill_modifier),
+    names_glue = "skill_{skill_abbr}{.value}",
+    values_fill = list(skill_dummy = 0, skill_modifier = NA))
+
+monsters_skills_collapsed <- monsters_skills |>
+  group_by(type) |>
+  summarize(across(starts_with("skill_"), mean, na.rm = TRUE))
+
+plot_skills_type <- monsters_skills_collapsed |>
+  ggplot(aes(x=skill_historyskill_dummy, y= reorder(type, skill_historyskill_dummy))) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = round(skill_historyskill_dummy, 0.001)),
+            hjust = -0.5,
+            size = 3.5) +
+  labs(title = "Average History Skill by Monster Type",
+       x = "Average History Skill",
+       y= "Monster Type",
+       subtitle="Data from 2024 Dungeons and Dragons Monsters List")
+plot_skills_type
+
+
+
+
+
+#rshiny
+
+
+monsters_skills <- monsters |>
+  separate_rows(skills, sep = ",\\s+") |>
+  mutate(
+    skill_name = str_extract(skills, "^[A-Za-z]+"),
+    skill_modifier = as.numeric(str_extract(skills, "[+-]\\d+")))
+
+monsters_skills_collapsed <- monsters_skills |>
+  group_by(type,skill_name) |>
+  summarize(mean_modifier = mean(skill_modifier, na.rm = FALSE),
+            .groups = "drop") |>
+  mutate(skill_name = factor(skill_name, levels = sort(unique(skill_name))))
+
+
+max_modifier <- max(monsters_skills_collapsed$mean_modifier, na.rm = TRUE)
+
+ui <- fluidPage(
+  titlePanel("Monster Skills by Type"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("type", "Choose Monster Type:",
+                  choices = sort(unique(monsters_skills_collapsed$type)))
+    ),
+    mainPanel(
+      plotOutput("skillPlot")
+    )
+  )
+)
+
+# --- Server ---
+server <- function(input, output) {
+  output$skillPlot <- renderPlot({
+    # Filter data for selected monster type
+    filtered_data <- monsters_skills_collapsed %>%
+      filter(type == input$type) |>
+      mutate(skill_name = factor(skill_name, levels = sort(unique(skill_name))))
+    
+    # Create plot
+    ggplot(filtered_data, aes(x = mean_modifier, y = skill_name)) +
+      geom_col(fill = "darkorange") +
+      xlim(0, max_modifier) +
+      theme_minimal() +
+      labs(
+        title = paste("Mean Skill Modifiers for", input$type),
+        x = "Mean Modifier",
+        y = "Skill"
+      )
+  })
+}
+
+# --- Run the App ---
+shinyApp(ui = ui, server = server)
