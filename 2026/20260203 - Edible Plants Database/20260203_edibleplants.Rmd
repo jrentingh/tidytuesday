@@ -1,0 +1,158 @@
+---
+title: "TidyTuesday 20260203 - Edible Plants Database"
+author: "Jason Entingh"
+date: "`r Sys.Date()`"
+output: html_document
+---
+# setup
+
+## knitr
+```{r setup_knitr, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## library
+```{r library, include = FALSE}
+library(tidyverse)
+library(tidytuesdayR)
+library(purrr)
+library(janitor)
+```
+
+# import
+```{r import, include = FALSE}
+
+tuesdata <- tidytuesdayR::tt_load('2026-02-03')
+
+edible_plants <- tuesdata$edible_plants
+
+```
+
+# cleaning checklist
+
+## check data types
+
+```{r cleaning_datatypes}
+
+edible_plants |> 
+  glimpse()
+
+# change following to numeric - separate and get high and low?
+# for those with high-low - calculate midpoint and take that
+to_numeric <- c("temperature_germination", "temperature_growing", "days_germination", "days_harvest")
+
+
+edible_plants_clean <- edible_plants |> 
+  mutate(
+    across(
+      all_of(to_numeric), 
+      ~ str_extract(.x, "^[^-]+"),
+      .names = "{.col}_low")) |> 
+  mutate(
+    across(
+      all_of(to_numeric), 
+      ~ str_extract(.x, "[^-]+$"),
+      .names = "{.col}_high")) |> 
+  mutate(
+    across(
+      all_of(to_numeric), 
+      ~ {
+        low  <- .data[[paste0(cur_column(), "_low")]]
+        high <- .data[[paste0(cur_column(), "_high")]]
+    
+    case_when(
+      !is.na(low) & !is.na(high) ~ high - low,
+      is.na(low) ~ high,
+      is.na(high) ~ low,
+      TRUE ~ NA_real_
+    )
+  }))
+
+
+
+to_numeric_highlow <- edible_plants_clean |> 
+  select(ends_with("_low") | ends_with("_high")) |> 
+  names()
+
+test <- edible_plants_clean |> 
+  mutate(
+    across(
+      all_of(to_numeric_highlow),
+      ~ case_when(
+        . == "" ~ NA_character_,
+        .default = .
+      )
+    )
+  ) |> 
+  mutate(
+    across(
+      all_of(to_numeric_highlow),
+      as.numeric
+    )
+  )
+  mutate(
+    across(
+      all_of(to_numeric),
+      ~ paste0(.x, "_high") - paste0(.x, "_low"),
+      .names = "{.col}"
+    )
+  )
+
+
+  # recalculate variable as midpoint, or as single value if single value
+
+```
+
+## duplicates
+
+```{r cleaning_duplicates}
+
+# duplicates by taxonomic name
+edible_plants |> 
+  count(taxonomic_name) |> 
+  filter(n > 1)
+
+# duplicates by common name
+edible_plants |> 
+  count(common_name) |> 
+  filter(n > 1)
+# common name unique.
+
+```
+
+## missing values
+
+### explicit
+
+Explicit missing values are those noted by the presence of an NA value. 
+
+An explicit missing value is the presence of an absence.
+
+```{r cleaning_missing_explicit}
+
+# simple summary
+edible_plants |> 
+  summary()
+
+# summarize observations and missing counts for each variable
+edible_plants |> 
+  summarise(across(everything(),
+                   list(
+                     n_obs = ~ length(.),
+                     n_missing = ~ sum(is.na(.))
+                   ))) |> 
+  pivot_longer(everything(),
+               names_to = c("variable", "stat"),
+               names_pattern = "(.*)_(n_obs|n_missing)",
+               values_to = "value") |> 
+  pivot_wider(names_from = stat, values_from = value)
+
+# if working with years, can then check if any particular year has a higher proportion of missing values for a particular variable
+planes |> 
+  group_by(year) |> 
+  summarize(
+    n = n(),
+    sum_missing = sum(is.na(speed))
+  )
+
+```
