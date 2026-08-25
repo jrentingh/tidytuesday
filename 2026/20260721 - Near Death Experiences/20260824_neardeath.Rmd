@@ -1,0 +1,57 @@
+---
+title: "TidyTuesday - Near Death Experiences 20260721"
+author: "Jason Entingh"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# library
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(writexl)
+library(janitor)
+```
+
+# import
+
+```{r}
+
+tuesdata <- tidytuesdayR::tt_load('2026-07-21')
+
+nde_experiences_raw <- tuesdata$nde_experiences
+
+```
+
+# data clean checklist
+
+## check data types
+
+```{r cleaning_datatypes}
+
+nde_experiences_raw |> 
+  glimpse()
+
+```
+
+# sandbox
+
+## experiences by year
+
+```{r}
+
+nde_experiences_raw |> 
+  mutate(
+    year = year(exp_date)
+  ) |> 
+  group_by(year) |> 
+  summarize(
+    n_exp = n()
+  ) |> 
+  ggplot(aes(x = year, y = n_exp)) +
+  geom_col()
+
+```
+
+
